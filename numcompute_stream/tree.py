@@ -98,7 +98,7 @@ class DecisionTreeClassifier:
     With max_features=None, every column is considered.
     """
 
-    def __init__(self, max_depth=5, min_samples_split=2, max_features=None):
+    def __init__(self, max_depth=5, min_samples_split=2, max_features=None, buffer_size=500):
         if not isinstance(max_depth, (int, np.integer)) or max_depth < 0:
             raise ValueError("max_depth must be a non-negative integer")
         if not isinstance(min_samples_split, (int, np.integer)) or min_samples_split < 2:
@@ -113,12 +113,38 @@ class DecisionTreeClassifier:
         self.max_features = max_features
         self._tree = None
 
+        if (
+            isinstance(buffer_size, (bool, np.bool_))
+            or not isinstance(buffer_size, (int, np.integer))
+            or buffer_size < 1
+        ):
+            raise ValueError("buffer_size must be a positive integer")
+
+        self.buffer_size = buffer_size
+        self._pending_X = []
+        self._pending_y = []
+        self._pending_rows = 0
+
     def fit(self, X, y):
         """Train from scratch on 2-D numeric X and 1-D class labels y.
 
         X must contain at least one row and one feature, with finite values.
         y must contain one label per row. Return the fitted classifier.
         """
+        X, y = self._validate_training_data(X, y)
+
+        # A fixed seed makes feature sampling repeatable across fits.
+        rng = np.random.default_rng(0)
+        self._tree = self._build(X, y, depth=0, rng=rng)
+        self.n_features_in_ = X.shape[1]
+        self.classes_ = np.unique(y)
+        self._pending_X.clear()
+        self._pending_y.clear()
+        self._pending_rows = 0
+        return self
+
+    def _validate_training_data(self, X, y):
+        """Convert training inputs to NumPy arrays and validate them."""
         X = np.asarray(X, dtype=float)
         y = np.asarray(y)
 
@@ -133,12 +159,34 @@ class DecisionTreeClassifier:
         if self.max_features is not None and self.max_features > X.shape[1]:
             raise ValueError("max_features cannot exceed the number of columns in X")
 
-        # A fixed seed makes feature sampling repeatable across fits.
-        rng = np.random.default_rng(0)
-        self._tree = self._build(X, y, depth=0, rng=rng)
-        self.n_features_in_ = X.shape[1]
-        self.classes_ = np.unique(y)
-        return self
+        return X, y
+
+    def partial_fit(self, X, y):
+        """Buffer labelled rows and retrain once the buffer reaches its threshold."""
+        X, y = self._validate_training_data(X, y)
+
+        if self._tree is not None:
+            expected_features = self.n_features_in_
+        elif self._pending_X:
+            expected_features = self._pending_X[0].shape[1]
+        else:
+            expected_features = X.shape[1]
+
+        if X.shape[1] != expected_features:
+            raise ValueError("X must have the same number of features as earlier batches")
+
+        total_rows = self._pending_rows + len(X)
+        if total_rows < self.buffer_size:
+            # Copy the inputs so later edits by the caller cannot change the buffer.
+            self._pending_X.append(X.copy())
+            self._pending_y.append(y.copy())
+            self._pending_rows = total_rows
+            return self
+
+        buffered_X = np.vstack([*self._pending_X, X])
+        buffered_y = np.concatenate([*self._pending_y, y])
+        return self.fit(buffered_X, buffered_y)
+
 
     def _build(self, X, y, depth, rng):
         """Build a node by choosing a split or storing a majority label."""
