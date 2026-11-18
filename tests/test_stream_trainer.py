@@ -83,3 +83,13 @@ def test_trainer_works_with_pipeline():
     assert trainer.score_chunk(
         [[4.0], [15.0]], [0, 1]
     ) == pytest.approx(1.0)
+
+def test_history_records_estimated_memory():
+    """Evaluation logs a positive estimate of retained estimator memory."""
+    trainer = make_trainer()
+    trainer.score_chunk([[4.0], [15.0]], [0, 1])
+
+    memory = trainer.history[-1]["estimator_bytes"]
+
+    assert isinstance(memory, int)
+    assert memory > 0
