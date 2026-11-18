@@ -46,7 +46,7 @@ class Pipeline:
             for step in transformers:
                 values = step.transform(values)
 
-            self._tree.partial_fit(values, labels)
+            self._tree.fit(values, labels)
             self._active_transformers = transformers
             self._pending_X.clear()
             self._pending_y.clear()
