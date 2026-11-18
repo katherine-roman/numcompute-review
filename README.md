@@ -1,3 +1,81 @@
+# NumCompute Stream — Assignment 2.2
+
+This individual extension adds chunk-based training and evaluation to the
+original NumCompute project. The new modules are in `numcompute_stream`.
+
+## Components
+
+- `tree.py`: decision tree using Gini impurity and vectorised split search.
+  `partial_fit` collects rows in a buffer and retrains when the buffer reaches
+  `buffer_size`. Predictions use the last trained tree between retrains.
+- `preprocessing.py`: incremental StandardScaler, SimpleImputer and
+  OneHotEncoder.
+- `pipeline.py`: updates preprocessing and trains the buffered tree.
+  It keeps the preprocessing settings used by the active tree for prediction.
+- `stream.py`: StreamTrainer with chunk accuracy, cumulative accuracy and
+  estimated memory logging.
+- `stats.py`: running mean and variance, exact quantiles and histograms.
+- `metrics.py`: cumulative or rolling accuracy, precision, recall, F1,
+  confusion matrix and binary ROC AUC.
+- `visualise.py`: plots metrics over time, compares models and displays
+  predictions against ground truth.
+
+## Run the demonstration
+
+The streaming code uses Python, NumPy and Matplotlib. Tests require pytest.
+The notebook also requires a Python Jupyter kernel.
+
+Open `demo/stream_demo.ipynb` in VS Code and select the `paiml` kernel.
+Click **Restart**, then **Run All** to execute the notebook from the beginning.
+
+The notebook generates a reproducible synthetic CSV with 1,200 rows,
+two features, three classes and missing feature values. It loads the CSV
+using `numcompute.io.load_csv` and processes 24 chunks of 50 rows.
+
+The first 200 rows provide initial training. Each remaining chunk is
+evaluated before being used for training. The notebook compares buffer
+sizes of 50, 100 and 200 rows and saves plots and CSV results in
+`demo/outputs`.
+
+The CSV is loaded into memory before being divided into chunks; this
+demonstrates streaming updates rather than reading a file incrementally.
+
+## Run tests and benchmarks
+
+Run these commands in the VS Code terminal from the repository root:
+
+```sh
+conda run -n paiml python -m pytest tests -q
+conda run -n paiml python benchmark/stream_benchmark.py
+```
+
+The complete suite passed 720 tests, including 78 added streaming tests.
+
+The split-search benchmark checks matching results before comparing the
+loop and vectorised implementations. It records the median of five timed
+runs in `benchmark/stream_split_results.csv`.
+
+The notebook separately compares buffer accuracy, retraining counts and
+update times. Update times include preprocessing and model training.
+Timing results depend on the computer and may change between runs.
+
+## Usage notes and limitations
+
+- Create a fresh tree for each pipeline and train it through the pipeline.
+- Keep input feature count and order consistent across chunks.
+- Place an expanding OneHotEncoder last among the preprocessing steps.
+- Mean imputation uses running statistics. Exact median imputation and
+  exact quantiles retain previous data, so their memory use grows.
+- An entirely missing feature uses zero for mean or median imputation
+  until observed values become available.
+- Metrics retain all observations unless `window_size` limits the history.
+- ROC AUC requires binary labels and scores for the positive class.
+  It is not calculated for the three-class demonstration.
+- Memory logging estimates retained estimator or pipeline objects.
+  It does not measure the Python process's total RAM.
+
+---
+
 # NumCompute group assignment
 
 NumCompute is a four-person Python and NumPy scientific-computing toolkit. This
